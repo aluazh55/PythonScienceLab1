@@ -1,34 +1,8 @@
--- 1. Таблица транзакций
-CREATE TABLE IF NOT EXISTS transactions (
-    id              SERIAL PRIMARY KEY,
-    tx_date         DATE NOT NULL,
-    account_number  VARCHAR(20) NOT NULL,
-    operation_type  VARCHAR(10) NOT NULL CHECK (operation_type IN ('приход', 'расход')),
-    amount          NUMERIC(15, 2) NOT NULL
-);
-
--- 2. Генерация минимум 300 записей (можно больше)
-DO $$
-DECLARE
-    i INT;
-    acc VARCHAR(20);
-    types TEXT[] := ARRAY['приход', 'расход'];
-BEGIN
-    FOR i IN 1..350 LOOP
-        acc := '40817810' || lpad((1000 + (i % 50))::text, 6, '0');  -- разные счета
-
-        INSERT INTO transactions (tx_date, account_number, operation_type, amount)
-        VALUES (
-            CURRENT_DATE - (random() * 365)::int,
-            acc,
-            types[CASE WHEN random() < 0.5 THEN 1 ELSE 2 END],
-            (random() * 100000 + 100)::numeric(15,2)
-        );
-    END LOOP;
-END $$;
-
--- 3. Функция daily_report
-CREATE OR REPLACE FUNCTION daily_report(
+запускали в терминале
+Как исправить (самый простой и надёжный способ)
+Явно квалифицируй столбцы через имя CTE (daily.).
+Исправленный вариант функции daily_report:
+SQLCREATE OR REPLACE FUNCTION daily_report(
     p_account_number VARCHAR,
     p_start_date     DATE,
     p_end_date       DATE
@@ -44,7 +18,7 @@ AS $$
 BEGIN
     RETURN QUERY
     WITH daily AS (
-        SELECT
+        SELECT 
             tx_date,
             SUM(CASE WHEN operation_type = 'приход' THEN amount ELSE 0 END) AS income,
             SUM(CASE WHEN operation_type = 'расход' THEN amount ELSE 0 END) AS expense
@@ -54,10 +28,10 @@ BEGIN
         GROUP BY tx_date
     ),
     running AS (
-        SELECT
+        SELECT 
             daily.tx_date          AS report_date,
-            daily.income           AS income,
-            daily.expense          AS expense,
+            daily.income,
+            daily.expense,
             SUM(daily.income - daily.expense) OVER (ORDER BY daily.tx_date) AS balance
         FROM daily
     )
@@ -65,10 +39,8 @@ BEGIN
     ORDER BY report_date;
 END;
 $$;
-
--- 4. Функция monthly_report
--- Функция monthly_report (исправленная)
-CREATE OR REPLACE FUNCTION monthly_report(
+То же самое нужно сделать и для monthly_report:
+SQLCREATE OR REPLACE FUNCTION monthly_report(
     p_account_number VARCHAR,
     p_start_date     DATE,
     p_end_date       DATE
@@ -84,7 +56,7 @@ AS $$
 BEGIN
     RETURN QUERY
     WITH monthly AS (
-        SELECT
+        SELECT 
             DATE_TRUNC('month', tx_date)::DATE AS month_start,
             SUM(CASE WHEN operation_type = 'приход' THEN amount ELSE 0 END) AS income,
             SUM(CASE WHEN operation_type = 'расход' THEN amount ELSE 0 END) AS expense
@@ -94,10 +66,10 @@ BEGIN
         GROUP BY month_start
     ),
     running AS (
-        SELECT
+        SELECT 
             monthly.month_start    AS report_month,
-            monthly.income         AS income,
-            monthly.expense        AS expense,
+            monthly.income,
+            monthly.expense,
             SUM(monthly.income - monthly.expense) OVER (ORDER BY monthly.month_start) AS balance
         FROM monthly
     )
